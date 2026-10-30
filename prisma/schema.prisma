@@ -1,0 +1,126 @@
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id            String       @id @default(cuid())
+  name          String
+  email         String       @unique
+  emailVerified Boolean      @default(false)
+  image         String?
+  role          Role         @default(USER)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+  bots          Chatbot[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("session")
+}
+
+model Account {
+  id                   String    @id @default(cuid())
+  userId               String
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId            String
+  providerId           String
+  accessToken          String?
+  refreshToken         String?
+  idToken              String?
+  accessTokenExpiresAt DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                String?
+  password             String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("verification")
+}
+
+model Chatbot {
+  id             String          @id @default(cuid())
+  name           String
+  description    String?
+  avatar         String?
+  systemPrompt   String          @default("You are a helpful AI assistant.")
+  model          String          @default("llama-3.3-70b-versatile")
+  temperature    Float           @default(0.7)
+  welcomeMessage String          @default("Hello! How can I help you today?")
+  isPublic       Boolean         @default(true)
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  knowledgeFiles KnowledgeFile[]
+  chats          ChatSession[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@map("chatbot")
+}
+
+model KnowledgeFile {
+  id        String   @id @default(cuid())
+  name      String
+  url       String
+  content   String?  @db.Text
+  botId     String
+  bot       Chatbot  @relation(fields: [botId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@map("knowledge_file")
+}
+
+model ChatSession {
+  id        String        @id @default(cuid())
+  botId     String
+  bot       Chatbot       @relation(fields: [botId], references: [id], onDelete: Cascade)
+  messages  ChatMessage[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@map("chat_session")
+}
+
+model ChatMessage {
+  id        String      @id @default(cuid())
+  sessionId String
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String      // 'user' | 'model'
+  content   String      @db.Text
+  createdAt DateTime    @default(now())
+
+  @@map("chat_message")
+}
