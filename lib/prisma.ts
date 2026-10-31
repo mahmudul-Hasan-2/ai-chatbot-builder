@@ -14,3 +14,6 @@ export const prisma = globalForPrisma.prisma || new PrismaClient({ adapter });
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
+
+// নিচের লাইনটি যোগ করলেই default export হয়ে যাবে
+export default prisma;

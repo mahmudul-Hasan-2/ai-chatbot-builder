@@ -1,77 +1,108 @@
-import { groq } from "@/lib/groq";
+import { NextRequest } from "next/server";
+import { Groq } from "groq-sdk";
 import { prisma } from "@/lib/prisma";
-import { NextRequest, NextResponse } from "next/server";
+
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY,
+});
 
 export async function POST(req: NextRequest) {
   try {
-    const { botId, messages, sessionId } = await req.json();
+    const { botId, sessionId, messages } = await req.json();
 
+    if (!botId || !messages || !Array.isArray(messages)) {
+      return new Response("Missing botId or messages", { status: 400 });
+    }
+
+    // 1. Fetch Chatbot details
     const bot = await prisma.chatbot.findUnique({
       where: { id: botId },
-      include: { knowledgeFiles: true },
     });
 
-    if (!bot || !bot.isPublic) {
-      return NextResponse.json(
-        { error: "Bot not found or private" },
-        { status: 404 },
-      );
+    if (!bot) {
+      return new Response("Bot not found", { status: 404 });
     }
 
-    // Build context with knowledge base if files exist
-    let knowledgeContext = "";
-    if (bot.knowledgeFiles.length > 0) {
-      knowledgeContext =
-        "\n\nKnowledge Base:\n" +
-        bot.knowledgeFiles
-          .map((f) => f.content)
-          .filter(Boolean)
-          .join("\n---\n");
-    }
-
-    const systemMessage = {
+    // 2. Format System Prompt & User Messages
+    const systemInstruction = {
       role: "system",
-      content: `${bot.systemPrompt}${knowledgeContext}`,
+      content: bot.systemPrompt || "You are a helpful AI assistant.",
     };
 
-    const formattedMessages = [
-      systemMessage,
-      ...messages.map((m: any) => ({
-        role: m.role === "model" ? "assistant" : "user",
+    // Filter out welcome message or invalid IDs if needed, only pass standard role/content
+    const validMessages = messages
+      .filter((m: any) => m.content && m.content.trim() !== "")
+      .map((m: any) => ({
+        role: m.role === "user" ? "user" : "assistant",
         content: m.content,
-      })),
-    ];
+      }));
 
-    const stream = await groq.chat.completions.create({
-      model: bot.model || "llama-3.3-70b-versatile",
-      messages: formattedMessages as any,
-      temperature: bot.temperature,
+    const formattedMessages = [systemInstruction, ...validMessages];
+
+    // 3. Save User Message to Database if Session exists
+    const lastUserMsg = validMessages[validMessages.length - 1];
+    if (sessionId && lastUserMsg && lastUserMsg.role === "user") {
+      await prisma.chatMessage.create({
+        data: {
+          sessionId,
+          role: "user",
+          content: lastUserMsg.content,
+        },
+      });
+    }
+
+    // 4. Request Groq API Stream
+    const groqResponse = await groq.chat.completions.create({
+      messages: formattedMessages,
+      model: bot.model || "openai/gpt-oss-120b",
+      temperature: bot.temperature || 0.7,
       stream: true,
     });
 
+    // 5. Stream output cleanly to frontend
+    let fullAssistantResponse = "";
     const encoder = new TextEncoder();
-    const customReadable = new ReadableStream({
+
+    const stream = new ReadableStream({
       async start(controller) {
-        for await (const chunk of stream) {
-          const content = chunk.choices[0]?.delta?.content || "";
-          if (content) {
-            controller.enqueue(encoder.encode(content));
+        try {
+          for await (const chunk of groqResponse) {
+            const content = chunk.choices[0]?.delta?.content || "";
+            if (content) {
+              fullAssistantResponse += content;
+              controller.enqueue(encoder.encode(content));
+            }
           }
+
+          // Save Assistant Message to DB after stream completes
+          if (sessionId && fullAssistantResponse.trim()) {
+            await prisma.chatMessage.create({
+              data: {
+                sessionId,
+                role: "assistant",
+                content: fullAssistantResponse,
+              },
+            });
+          }
+        } catch (err) {
+          console.error("Stream processing error:", err);
+        } finally {
+          controller.close();
         }
-        controller.close();
       },
     });
 
-    return new Response(customReadable, {
+    return new Response(stream, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
-        "Transfer-Encoding": "chunked",
+        "Cache-Control": "no-cache",
       },
     });
   } catch (error: any) {
-    return NextResponse.json(
-      { error: error.message || "Failed to process chat" },
-      { status: 500 },
-    );
+    console.error("API Error:", error);
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 }

@@ -2,7 +2,7 @@ import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 
 export interface Message {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
 }
 
@@ -20,16 +20,13 @@ export const chatSlice = createSlice({
   name: "chat",
   initialState,
   reducers: {
-    setMessages: (state, action: PayloadAction<Message[]>) => {
-      state.messages = action.payload;
-    },
     addMessage: (state, action: PayloadAction<Message>) => {
       state.messages.push(action.payload);
     },
     updateLastAssistantMessage: (state, action: PayloadAction<string>) => {
-      const last = state.messages[state.messages.length - 1];
-      if (last && last.role === "assistant") {
-        last.content += action.payload;
+      const lastMsg = state.messages[state.messages.length - 1];
+      if (lastMsg && lastMsg.role === "assistant") {
+        lastMsg.content += action.payload;
       }
     },
     setIsStreaming: (state, action: PayloadAction<boolean>) => {
@@ -43,7 +40,6 @@ export const chatSlice = createSlice({
 });
 
 export const {
-  setMessages,
   addMessage,
   updateLastAssistantMessage,
   setIsStreaming,

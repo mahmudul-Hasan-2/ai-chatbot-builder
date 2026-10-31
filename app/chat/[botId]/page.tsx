@@ -10,6 +10,7 @@ import {
   setIsStreaming,
   clearChat,
 } from "@/lib/redux/chatSlice";
+import { getOrCreateChatSessionAction } from "@/actions/chat.actions";
 import { Send, Bot, User as UserIcon, Loader2 } from "lucide-react";
 
 export default function PublicChatPage() {
@@ -21,37 +22,67 @@ export default function PublicChatPage() {
 
   const [input, setInput] = useState("");
   const [botInfo, setBotInfo] = useState<any>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [loadingBot, setLoadingBot] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // 👇 এই ফ্লাগটি দিয়ে চেক করব যেন ওয়েলকাম মেসেজ একবারের বেশি না লোড হয়
   const isInitialized = useRef(false);
 
   useEffect(() => {
-    // যদি অলরেডি ইনিশিয়ালাইজড হয়ে থাকে, তবে আর রান করবে না
     if (isInitialized.current) return;
     isInitialized.current = true;
 
     dispatch(clearChat());
 
-    // Fetch basic bot info and set welcome message
-    fetch(`/api/chat/info?botId=${botId}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.bot) {
-          setBotInfo(data.bot);
-          dispatch(
-            addMessage({
-              id: "welcome-msg",
-              role: "assistant",
-              content:
-                data.bot.welcomeMessage || "Hello! How can I help you today?",
-            }),
-          );
+    const initChat = async () => {
+      try {
+        // 1. Fetch Bot Info
+        const infoRes = await fetch(`/api/chat/info?botId=${botId}`);
+        const infoData = await infoRes.json();
+
+        if (infoData.bot) {
+          setBotInfo(infoData.bot);
         }
+
+        // 2. Get or Create DB Chat Session
+        const storedSessionId = localStorage.getItem(`chat_session_${botId}`);
+        const sessionRes = await getOrCreateChatSessionAction(
+          botId as string,
+          storedSessionId || undefined,
+        );
+
+        if (sessionRes.success && sessionRes.session) {
+          setSessionId(sessionRes.session.id);
+          localStorage.setItem(`chat_session_${botId}`, sessionRes.session.id);
+
+          // 3. Populate existing chat history or set welcome message
+          if (sessionRes.session.messages.length > 0) {
+            sessionRes.session.messages.forEach((msg: any) => {
+              dispatch(
+                addMessage({
+                  id: msg.id,
+                  role: msg.role,
+                  content: msg.content,
+                }),
+              );
+            });
+          } else if (infoData.bot?.welcomeMessage) {
+            dispatch(
+              addMessage({
+                id: "welcome-msg",
+                role: "assistant",
+                content: infoData.bot.welcomeMessage,
+              }),
+            );
+          }
+        }
+      } catch (err) {
+        console.error("Failed to initialize chat session", err);
+      } finally {
         setLoadingBot(false);
-      })
-      .catch(() => setLoadingBot(false));
+      }
+    };
+
+    initChat();
   }, [botId, dispatch]);
 
   useEffect(() => {
@@ -71,12 +102,9 @@ export default function PublicChatPage() {
       content: userMsg,
     };
 
-    // 1. Add User Message
     dispatch(addMessage(newUserMessage));
-
     const updatedMessages = [...messages, newUserMessage];
 
-    // 2. Prepare Assistant Placeholder Message
     const assistantMessageId = (Date.now() + 1).toString();
     dispatch(
       addMessage({
@@ -94,6 +122,7 @@ export default function PublicChatPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           botId,
+          sessionId,
           messages: updatedMessages.map((m) => ({
             role: m.role,
             content: m.content,
@@ -143,7 +172,7 @@ export default function PublicChatPage() {
             {botInfo?.name || "AI Assistant"}
           </h1>
           <p className="text-xs text-slate-400">
-            {botInfo?.description || "Powered by Groq & Llama 3.3"}
+            {botInfo?.description || "Powered by Groq"}
           </p>
         </div>
       </div>

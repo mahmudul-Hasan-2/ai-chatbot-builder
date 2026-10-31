@@ -52,7 +52,7 @@ export default function CreateBotPage() {
   };
 
   return (
-    <div className="bg-black">
+    <div>
       <div className="max-w-3xl mx-auto px-6 py-10">
         <Link
           href="/dashboard"

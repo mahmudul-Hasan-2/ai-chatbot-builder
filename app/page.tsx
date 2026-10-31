@@ -3,7 +3,7 @@ import { Sparkles, ArrowRight, Zap, Bot, ShieldCheck } from "lucide-react";
 
 export default function HomePage() {
   return (
-    <div className="bg-black">
+    <div>
       <div className="flex flex-col items-center justify-center px-4 py-20 text-center max-w-4xl mx-auto my-auto ">
         {/* Badge */}
         <div className="inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-4 py-1.5 text-xs font-medium text-blue-400 mb-6 shadow-sm">
