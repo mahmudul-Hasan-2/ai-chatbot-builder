@@ -53,6 +53,8 @@ DATABASE_URL="postgresql://user:password@localhost:5432/chatbot_db?schema=public
 BETTER_AUTH_SECRET="your_better_auth_secret_key"
 BETTER_AUTH_URL="http://localhost:3000"
 GROQ_API_KEY="your_groq_api_key_here"
+UPLOADTHING_SECRET='your_uploadThing Secret'
+UPLOADTHING_APP_ID='your_uploadThing_App_ID'
 ```
 
 ### 4. Database Setup & Migration
